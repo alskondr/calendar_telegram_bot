@@ -1,6 +1,8 @@
 from configparser import ConfigParser
 import random
 import datetime
+from threading import Thread
+from time import sleep
 
 import telebot
 
@@ -26,6 +28,7 @@ class Task:
     def __init__(self, task_name):
         self.name = task_name
         self.dt = None
+        self.notify_id = None
 
     def __str__(self):
         return f'{self.name}: {self.dt.strftime("%d.%m.%Y %H:%M")}'
@@ -36,6 +39,22 @@ class UserData:
         self.state = MAIN_STATE
         self.tasks = []
         self.current_task = None
+
+    def add_current_task(self, user_id):
+        if self.current_task.dt > datetime.datetime.now():
+            notify_id = sender.add_notify(user_id, self.current_task)
+            self.current_task.notify_id = notify_id
+        self.tasks.append(self.current_task)
+        self.tasks.sort(key=lambda task: task.dt)
+
+    def remove_task(self, task_name):
+        task = self.get_task(task_name)
+        if task:
+            sender.remove_notify(task.notify_id)
+            self.tasks.remove(task)
+            return True
+        else:
+            return False
 
     def get_task(self, task_name):
         for task in self.tasks:
@@ -80,8 +99,9 @@ def get_user_data(user_id):
 def send_welcome(message):
     user_id = message.from_user.id
     get_user_data(user_id)
-    bot.send_message(user_id, 'Вас приветствует календарь бот, который хранит список задач. '
-                              'Задачи хранятся в нижнем регистре.\n\n'
+    bot.send_message(user_id, 'Вас приветствует календарь бот с уведомлениями о задачах. '
+                              'Вы можете создавать, удалять, просматривать задачи и получать уведомления.\n'
+                              'Бот не учитывает регистр букв.\n\n'
                               'Команда /add - добавляет задачу\n'
                               'Команда /delete - удаляет задачу\n'
                               'Команда /tasks - список задач\n'
@@ -118,8 +138,7 @@ def enter_added_task_date_handler(message):
         return
 
     user.current_task.dt = dt
-    user.tasks.append(user.current_task)
-    user.tasks.sort(key=lambda task: task.dt)
+    user.add_current_task(user_id)
     bot.reply_to(message, 'Задача добавлена в список.')
     user.state = MAIN_STATE
 
@@ -134,9 +153,7 @@ def delete_handler(message):
 def delete_task_handler(message):
     user_id = message.from_user.id
     user = get_user_data(user_id)
-    task = user.get_task(message.text.lower())
-    if task:
-        user.tasks.remove(task)
+    if user.remove_task(message.text.lower()):
         bot.reply_to(message, 'Задача успешно удалена.')
         user.state = MAIN_STATE
     else:
@@ -221,4 +238,37 @@ def dispatcher(message):
         user.state = RANDOM_TASK_STATE
 
 
+class NotifySender(Thread):
+    def __init__(self):
+        Thread.__init__(self)
+        self._notifies = {}
+        self.next_id = 0
+
+    def add_notify(self, user_id, task):
+        curr_id = self.next_id
+        self.next_id += 1
+        self._notifies[curr_id] = [user_id, task]
+        return curr_id
+
+    def remove_notify(self, notify_id):
+        if notify_id in self._notifies.keys():
+            self._notifies.pop(notify_id)
+
+    def run(self):
+        while True:
+            sended_notify_ids = []
+            for notify_id, notify in self._notifies.items():
+                delta_time = datetime.datetime.now() + datetime.timedelta(seconds=20)
+                if notify[1].dt < delta_time:
+                    bot.send_message(notify[0], f'Напоминание о задаче:\n{notify[1]}')
+                    sended_notify_ids.append(notify_id)
+
+            for notify_id in sended_notify_ids:
+                self.remove_notify(notify_id)
+
+            sleep(10)
+
+
+sender = NotifySender()
+sender.start()
 bot.polling()
