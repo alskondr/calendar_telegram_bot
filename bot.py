@@ -6,6 +6,8 @@ from time import sleep
 
 import telebot
 
+import keyboard
+
 MAIN_STATE = 0
 ENTER_ADDED_TASK_NAME_STATE = 1
 ENTER_ADDED_TASK_DATE_STATE = 2
@@ -123,24 +125,23 @@ def enter_added_task_name_handler(message):
         bot.reply_to(message, 'Эта задача уже существует. Введите новое название.')
     else:
         user.current_task = Task(task_name)
-        bot.reply_to(message, 'Введите дату и время начала задачи в формате "дд.мм.гггг чч:мм".')
+        markup = keyboard.create_date_time_widget(datetime.datetime.now())
+        bot.send_message(message.from_user.id, 'Введите дату и время начала задачи.', reply_markup=markup)
         user.state = ENTER_ADDED_TASK_DATE_STATE
 
 
-def enter_added_task_date_handler(message):
-    user_id = message.from_user.id
-    user = get_user_data(user_id)
-
-    try:
-        dt = datetime.datetime.strptime(message.text, "%d.%m.%Y %H:%M")
-    except ValueError:
-        bot.reply_to(message, 'Время введено в неверном формате. Попробуйте еще раз в формате "дд.мм.гггг чч:мм".')
-        return
-
-    user.current_task.dt = dt
-    user.add_current_task(user_id)
-    bot.reply_to(message, 'Задача добавлена в список.')
-    user.state = MAIN_STATE
+@bot.callback_query_handler(func=lambda call: call)
+def markup_handler(call):
+    dt = keyboard.keyboard_handler(bot, call)
+    if dt:
+        user_id = call.message.chat.id
+        user = get_user_data(user_id)
+        user.current_task.dt = dt
+        user.add_current_task(user_id)
+        bot.send_message(chat_id=user_id,
+                         text=f'Задача *{user.current_task}* добавлена в список.',
+                         parse_mode='MARKDOWN')
+        user.state = MAIN_STATE
 
 
 @bot.message_handler(commands=['delete'])
@@ -222,11 +223,9 @@ def dispatcher(message):
     user_id = message.from_user.id
     user = get_user_data(user_id)
     state = user.state
-    
+
     if state == ENTER_ADDED_TASK_NAME_STATE:
         enter_added_task_name_handler(message)
-    elif state == ENTER_ADDED_TASK_DATE_STATE:
-        enter_added_task_date_handler(message)
     elif state == DELETE_TASK_STATE:
         delete_task_handler(message)
     elif state == RANDOM_TASK_STATE:
