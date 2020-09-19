@@ -1,10 +1,11 @@
 import pickle
 import datetime
-from dateutil.tz import gettz
+from dateutil.tz import gettz, tzlocal
 import os
 from pathlib import Path
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from oauthlib.oauth2.rfc6749.errors import InvalidGrantError
@@ -36,7 +37,8 @@ class UserData:
         self.user_id = user_id
         self.state = states.MAIN_STATE
         self.service = None
-        # self.current_task = None
+        self.current_task_name = ''
+        self._calendar_id = ''
 
         credentials_path = self.get_credentials_path()
         if os.path.exists(credentials_path):
@@ -62,12 +64,37 @@ class UserData:
             pickle.dump(credentials, token)
         return True
 
-    # def add_current_task(self, user_id):
-    #     if self.current_task.dt > datetime.datetime.now():
-    #         notify_id = sender.add_notify(user_id, self.current_task)
-    #         self.current_task.notify_id = notify_id
-    #     self.tasks.append(self.current_task)
-    #     self.tasks.sort(key=lambda task: task.dt)
+    def _get_calendar_id(self):
+        try:
+            self.service.calendars().get(calendarId=self._calendar_id).execute()
+        except HttpError:
+            self._calendar_id = ''
+            for calendar in self.get_calendars():
+                if calendar['summary'] == 'kas_calendar_bot':
+                    self._calendar_id = calendar['id']
+                    break
+            if not self._calendar_id:
+                calendar_dict = {
+                    'summary': 'kas_calendar_bot',
+                    'timeZone': 'Europe/Moscow'
+                }
+                created_calendar = self.service.calendars().insert(body=calendar_dict).execute()
+                self._calendar_id = created_calendar['id']
+        return self._calendar_id
+
+    def add_task(self, task_name, dt):
+        calendar_id = self._get_calendar_id()
+        event = {
+            'summary': task_name,
+            'start': {
+                'dateTime': dt.replace(tzinfo=tzlocal()).isoformat()
+            },
+            'end': {
+                'dateTime': (dt.replace(tzinfo=tzlocal()) + datetime.timedelta(hours=1)).isoformat()
+            }
+        }
+        self.service.events().insert(calendarId=calendar_id, body=event).execute()
+
     #
     # def remove_task(self, task_name):
     #     task = self.get_task(task_name)

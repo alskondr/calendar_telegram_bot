@@ -91,25 +91,23 @@ def authorization_handler(message):
                               'Теперь Вы можете взаимодействовать со своим Google Календарем.')
         user.state = states.MAIN_STATE
 
-#
-# @bot.message_handler(commands=['add'])
-# def add_handler(message):
-#     user_id = message.from_user.id
-#     bot.send_message(user_id, 'Добавление задачи. Введите имя.')
-#     get_user_data(user_id).state = ENTER_ADDED_TASK_NAME_STATE
-#
-#
-# def enter_added_task_name_handler(message):
-#     user_id = message.from_user.id
-#     user = get_user_data(user_id)
-#     task_name = message.text.lower()
-#     if user.get_task(task_name):
-#         bot.reply_to(message, 'Эта задача уже существует. Введите новое название.')
-#     else:
-#         user.current_task = Task(task_name)
-#         markup = keyboard.create_date_time_widget(datetime.datetime.now())
-#         bot.send_message(message.from_user.id, 'Введите дату и время начала задачи.', reply_markup=markup)
-#         user.state = ENTER_ADDED_TASK_DATE_STATE
+
+@bot.message_handler(commands=['add'])
+def add_handler(message):
+    user = get_user_data(message.from_user.id)
+    if not user.service:
+        no_auth_handler(message)
+        return
+    bot.send_message(user.user_id, 'Добавление задачи. Введите имя.')
+    user.state = states.ENTER_ADDED_TASK_NAME_STATE
+
+
+def enter_added_task_name_handler(message):
+    user = get_user_data(message.from_user.id)
+    user.current_task_name = message.text
+    markup = keyboard.create_date_time_widget(datetime.datetime.now())
+    bot.send_message(message.from_user.id, 'Введите дату и время начала задачи.', reply_markup=markup)
+    user.state = states.ENTER_ADDED_TASK_DATE_STATE
 
 
 # @bot.message_handler(commands=['delete'])
@@ -141,41 +139,6 @@ def tasks_handler(message):
     user.state = states.TASKS_STATE
 
 
-# def enter_print_tasks_date_handler(message):
-#     user_id = message.from_user.id
-#     user = get_user_data(user_id)
-#     date_string = message.text.lower()
-#
-#     if date_string == 'все':
-#         output_message = tasks_to_string(user.tasks)
-#     elif date_string == 'сегодня':
-#         output_message = tasks_to_string(user.get_day_tasks(datetime.date.today()))
-#     elif date_string == 'завтра':
-#         output_message = tasks_to_string(user.get_day_tasks(datetime.date.today() + datetime.timedelta(days=1)))
-#     else:
-#         try:
-#             dt = datetime.datetime.strptime(date_string, "%d.%m.%Y")
-#         except ValueError:
-#             bot.reply_to(message, 'Время введено в неверном формате. '
-#                                   'Попробуйте еще раз в формате "дд.мм.гггг", или "все", или "сегодня", или "завтра".')
-#             return
-#
-#         output_message = tasks_to_string(user.get_day_tasks(dt.date()))
-#
-#     bot.send_message(user_id, output_message)
-#     user.state = MAIN_STATE
-#
-#
-# def tasks_to_string(tasks):
-#     if not tasks:
-#         output_message = 'Список пуст'
-#     else:
-#         output_message = 'Задачи:'
-#         for task in tasks:
-#             output_message += f'\n - {task}'
-#     return output_message
-#
-#
 # def random_task_handler(message):
 #     user_id = message.from_user.id
 #     user = get_user_data(user_id)
@@ -196,15 +159,12 @@ def dispatcher(message):
 
     if state == states.AUTHORIZATION_STATE:
         authorization_handler(message)
-
-    # if state == ENTER_ADDED_TASK_NAME_STATE:
-    #     enter_added_task_name_handler(message)
+    elif state == states.ENTER_ADDED_TASK_NAME_STATE:
+        enter_added_task_name_handler(message)
     # elif state == DELETE_TASK_STATE:
     #     delete_task_handler(message)
     # elif state == RANDOM_TASK_STATE:
     #     random_task_handler(message)
-    # elif state == ENTER_PRINT_TASKS_DATE_STATE:
-    #     enter_print_tasks_date_handler(message)
     # else:
     #     bot.send_message(user_id, 'Не понял, повтори...')
     #     user.state = RANDOM_TASK_STATE
@@ -223,15 +183,13 @@ def markup_handler(call):
                                   call.message.message_id,
                                   parse_mode='MARKDOWN')
             user.state = states.MAIN_STATE
-
-        # user_id = call.message.chat.id
-        # user = get_user_data(user_id)
-        # user.current_task.dt = dt
-        # user.add_current_task(user_id)
-        # bot.send_message(chat_id=user_id,
-        #                  text=f'Задача *{user.current_task}* добавлена в список.',
-        #                  parse_mode='MARKDOWN')
-        # user.state = MAIN_STATE
+        elif user.state == states.ENTER_ADDED_TASK_DATE_STATE:
+            user.add_task(user.current_task_name, dt)
+            bot.send_message(chat_id=user.user_id,
+                             text='Задача *{0} {1}* добавлена в список.'.format(dt.strftime('%d.%m.%Y %H:%M'),
+                                                                                user.current_task_name),
+                             parse_mode='MARKDOWN')
+            user.state = states.MAIN_STATE
 
 
 sender = NotifySender(bot, data)
