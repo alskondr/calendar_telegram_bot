@@ -19,6 +19,8 @@ class NotifySender(Thread):
         while True:
             current_time = datetime.datetime.now() + datetime.timedelta(seconds=self.SLEEP_TIMEOUT)
             for user in self._data.values():
+                if not user.service:
+                    continue
                 tasks = user.get_tasks(self._last_time, current_time)
                 for task in tasks:
                     if self._last_time < taskutils.get_task_start_time(task).replace(tzinfo=None) < current_time:

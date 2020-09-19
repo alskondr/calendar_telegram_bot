@@ -39,30 +39,48 @@ def get_user_data(user_id):
 @bot.message_handler(commands=['start', 'help'])
 def start_handler(message):
     user = get_user_data(message.from_user.id)
-    bot.send_message(user.user_id, 'Вас приветствует календарь бот, работающий с Google Календарем. '
-                                   'Вы можете создавать, удалять, просматривать задачи и получать уведомления.\n\n'
-                                   'Команда /auth - авторизация в Google Календаре\n'
-                                   'Команда /add - добавление задачу\n'
-                                   'Команда /delete - удаление задачу\n'
-                                   'Команда /tasks - список задач\n'
-                                   'Команда /help - данная справка')
+    auth_message = '\n\n*Вы не авторизованы в Google аккаунте.*' if not user.service else ''
+    bot.send_message(user.user_id,
+                     'Вас приветствует календарь бот, работающий с Google Календарем. '
+                     'Вы можете создавать, удалять, просматривать задачи и получать уведомления.\n\n'
+                     'Команда /auth - авторизация в Google Календаре\n'
+                     'Команда /add - добавление задачу\n'
+                     'Команда /delete - удаление задачу\n'
+                     'Команда /tasks - список задач\n'
+                     'Команда /help - данная справка{0}'.format(auth_message),
+                     parse_mode='MARKDOWN')
+    user.state = states.MAIN_STATE
+
+
+def no_auth_handler(message):
+    user = get_user_data(message.from_user.id)
+    bot.send_message(message.from_user.id,
+                     '*Вы не авторизованы в Google аккаунте.*\n'
+                     'Авторизация: /auth',
+                     parse_mode='MARKDOWN')
     user.state = states.MAIN_STATE
 
 
 @bot.message_handler(commands=['auth'])
 def auth_handler(message):
     user = get_user_data(message.from_user.id)
-    bot.send_message(user.user_id,
-                     'Для авторизации в Google аккаунте и '
-                     'предоставления доступа боту к Вашему календарю пройдите по [ссылке]({0}).\n'
-                     'После авторизации отправьте боту полученный код.'.format(AUTHORIZATION_URL),
-                     parse_mode="MARKDOWN")
+    if not user.service:
+        bot.send_message(user.user_id,
+                         'Для авторизации в Google аккаунте и '
+                         'предоставления доступа боту к Вашему календарю пройдите по [ссылке]({0}).\n\n'
+                         'После авторизации отправьте боту полученный код.'.format(AUTHORIZATION_URL),
+                         parse_mode="MARKDOWN")
+    else:
+        bot.send_message(user.user_id,
+                         '*Вы уже авторизированы в Google аккаунте.*\n\n'
+                         'Для смены пользователя пройдите по [ссылке]({0}).\n\n'
+                         'После авторизации отправьте боту полученный код.'.format(AUTHORIZATION_URL),
+                         parse_mode="MARKDOWN")
     user.state = states.AUTHORIZATION_STATE
 
 
 def authorization_handler(message):
-    user_id = message.from_user.id
-    user = get_user_data(user_id)
+    user = get_user_data(message.from_user.id)
 
     code = message.text
     if not user.init_service(code):
@@ -94,31 +112,6 @@ def authorization_handler(message):
 #         user.state = ENTER_ADDED_TASK_DATE_STATE
 
 
-@bot.callback_query_handler(func=lambda call: call)
-def markup_handler(call):
-    dt = keyboard.keyboard_handler(bot, call)
-    if dt:
-        user_id = call.message.chat.id
-        user = get_user_data(user_id)
-
-        if user.state == states.TASKS_STATE:
-            tasks = user.get_day_tasks(dt.date())
-            bot.edit_message_text(taskutils.tasks_to_string(tasks),
-                                  user_id,
-                                  call.message.message_id,
-                                  parse_mode='MARKDOWN')
-            user.state = states.MAIN_STATE
-
-        # user_id = call.message.chat.id
-        # user = get_user_data(user_id)
-        # user.current_task.dt = dt
-        # user.add_current_task(user_id)
-        # bot.send_message(chat_id=user_id,
-        #                  text=f'Задача *{user.current_task}* добавлена в список.',
-        #                  parse_mode='MARKDOWN')
-        # user.state = MAIN_STATE
-
-
 # @bot.message_handler(commands=['delete'])
 # def delete_handler(message):
 #     user_id = message.from_user.id
@@ -138,10 +131,13 @@ def markup_handler(call):
 
 @bot.message_handler(commands=['tasks'])
 def tasks_handler(message):
-    user_id = message.from_user.id
-    user = get_user_data(user_id)
+    user = get_user_data(message.from_user.id)
+    if not user.service:
+        no_auth_handler(message)
+        return
+
     markup = keyboard.create_calendar(datetime.datetime.now(), True)
-    bot.send_message(user_id, 'Укажите дату:', reply_markup=markup)
+    bot.send_message(user.user_id, 'Укажите дату:', reply_markup=markup)
     user.state = states.TASKS_STATE
 
 
@@ -195,8 +191,7 @@ def tasks_handler(message):
 
 @bot.message_handler(func=lambda message: True)
 def dispatcher(message):
-    user_id = message.from_user.id
-    user = get_user_data(user_id)
+    user = get_user_data(message.from_user.id)
     state = user.state
 
     if state == states.AUTHORIZATION_STATE:
@@ -213,6 +208,30 @@ def dispatcher(message):
     # else:
     #     bot.send_message(user_id, 'Не понял, повтори...')
     #     user.state = RANDOM_TASK_STATE
+
+
+@bot.callback_query_handler(func=lambda call: call)
+def markup_handler(call):
+    dt = keyboard.keyboard_handler(bot, call)
+    if dt:
+        user = get_user_data(call.message.chat.id)
+
+        if user.state == states.TASKS_STATE:
+            tasks = user.get_day_tasks(dt.date())
+            bot.edit_message_text(taskutils.tasks_to_string(tasks),
+                                  user.user_id,
+                                  call.message.message_id,
+                                  parse_mode='MARKDOWN')
+            user.state = states.MAIN_STATE
+
+        # user_id = call.message.chat.id
+        # user = get_user_data(user_id)
+        # user.current_task.dt = dt
+        # user.add_current_task(user_id)
+        # bot.send_message(chat_id=user_id,
+        #                  text=f'Задача *{user.current_task}* добавлена в список.',
+        #                  parse_mode='MARKDOWN')
+        # user.state = MAIN_STATE
 
 
 sender = NotifySender(bot, data)
