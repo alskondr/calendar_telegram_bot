@@ -139,17 +139,16 @@ def tasks_handler(message):
     user.state = states.TASKS_STATE
 
 
-# def random_task_handler(message):
-#     user_id = message.from_user.id
-#     user = get_user_data(user_id)
-#     output_message = f'Хватит дурачиться, займись делом.'
-#     future_tasks = user.get_future_tasks()
-#     if future_tasks:
-#         task = random.choice(future_tasks)
-#         output_message += f'\nНапример, {task}'
-#
-#     bot.send_message(user_id, output_message)
-#     user.state = MAIN_STATE
+def random_task_handler(message):
+    user = get_user_data(message.from_user.id)
+    output_message = f'Хватит дурачиться, займись делом.'
+    future_tasks = user.get_future_tasks()
+    if future_tasks:
+        task = random.choice(future_tasks)
+        output_message += f'\nНапример, {taskutils.task_to_string(task, with_date=True)}'
+
+    bot.send_message(user.user_id, output_message)
+    user.state = states.MAIN_STATE
 
 
 @bot.message_handler(func=lambda message: True)
@@ -163,11 +162,14 @@ def dispatcher(message):
         enter_added_task_name_handler(message)
     # elif state == DELETE_TASK_STATE:
     #     delete_task_handler(message)
-    # elif state == RANDOM_TASK_STATE:
-    #     random_task_handler(message)
-    # else:
-    #     bot.send_message(user_id, 'Не понял, повтори...')
-    #     user.state = RANDOM_TASK_STATE
+    elif state == states.RANDOM_TASK_STATE:
+        random_task_handler(message)
+    else:
+        if not user.service:
+            no_auth_handler(message)
+            return
+        bot.send_message(user.user_id, 'Не понял, повтори...')
+        user.state = states.RANDOM_TASK_STATE
 
 
 @bot.callback_query_handler(func=lambda call: call)

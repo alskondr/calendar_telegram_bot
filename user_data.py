@@ -131,13 +131,14 @@ class UserData:
 
     def get_future_tasks(self):
         future_tasks = []
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now()
         for calendar in self.get_calendars():
+            tz = gettz(calendar.get('timeZone', 'UTC'))
+            now_str = now.replace(tzinfo=tz).isoformat()
             tasks = self.service.events().list(calendarId=calendar['id'],
-                                               timeMin=now,
+                                               timeMin=now_str,
                                                maxResults=5,
                                                singleEvents=True,
                                                orderBy='startTime').execute()
             future_tasks.extend(tasks.get('items', []))
-        future_tasks.sort(key=lambda task: taskutils.get_task_start_time(task))
         return future_tasks
