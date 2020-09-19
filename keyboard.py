@@ -4,6 +4,8 @@ import json
 
 from dateutil.relativedelta import relativedelta
 
+import taskutils
+
 DT_FORMAT = '%Y.%m.%d.%H.%M'
 
 
@@ -182,4 +184,12 @@ def create_date_time_widget(dt):
     row = [{'text': 'Готово', 'callback_data': create_callback_data('dt', dt_str)}]
     markup['inline_keyboard'].append(row)
 
+    return json.dumps(markup)
+
+
+def create_tasks_list(tasks):
+    markup = {'inline_keyboard': []}
+    for task in tasks:
+        row = [{'text': taskutils.task_to_string(task), 'callback_data': create_callback_data('delete', task['id'])}]
+        markup['inline_keyboard'].append(row)
     return json.dumps(markup)

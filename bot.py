@@ -110,13 +110,17 @@ def enter_added_task_name_handler(message):
     user.state = states.ENTER_ADDED_TASK_DATE_STATE
 
 
-# @bot.message_handler(commands=['delete'])
-# def delete_handler(message):
-#     user_id = message.from_user.id
-#     bot.send_message(user_id, 'Удаление задачи. Введите имя.')
-#     get_user_data(user_id).state = DELETE_TASK_STATE
-#
-#
+@bot.message_handler(commands=['delete'])
+def delete_handler(message):
+    user = get_user_data(message.from_user.id)
+    if not user.service:
+        no_auth_handler(message)
+        return
+    markup = keyboard.create_calendar(datetime.datetime.now(), True)
+    bot.send_message(user.user_id, 'Укажите дату:', reply_markup=markup)
+    user.state = states.DELETE_TASK_STATE
+
+
 # def delete_task_handler(message):
 #     user_id = message.from_user.id
 #     user = get_user_data(user_id)
@@ -174,10 +178,17 @@ def dispatcher(message):
 
 @bot.callback_query_handler(func=lambda call: call)
 def markup_handler(call):
+    user = get_user_data(call.message.chat.id)
+
+    if user.state == states.DELETE_TASK_SUCCESS_STATE:
+        tasks_data = call.data.split(':')
+        user.remove_task(tasks_data[1])
+        bot.edit_message_text('Задача удалена.', user.user_id, call.message.message_id)
+        user.state = states.MAIN_STATE
+        return
+
     dt = keyboard.keyboard_handler(bot, call)
     if dt:
-        user = get_user_data(call.message.chat.id)
-
         if user.state == states.TASKS_STATE:
             tasks = user.get_day_tasks(dt.date())
             bot.edit_message_text(taskutils.tasks_to_string(tasks),
@@ -187,11 +198,22 @@ def markup_handler(call):
             user.state = states.MAIN_STATE
         elif user.state == states.ENTER_ADDED_TASK_DATE_STATE:
             user.add_task(user.current_task_name, dt)
-            bot.send_message(chat_id=user.user_id,
-                             text='Задача *{0} {1}* добавлена в список.'.format(dt.strftime('%d.%m.%Y %H:%M'),
+            bot.edit_message_text('Задача *{0} {1}* добавлена в список.'.format(dt.strftime('%d.%m.%Y %H:%M'),
                                                                                 user.current_task_name),
-                             parse_mode='MARKDOWN')
+                                  user.user_id,
+                                  call.message.message_id,
+                                  parse_mode='MARKDOWN')
             user.state = states.MAIN_STATE
+        elif user.state == states.DELETE_TASK_STATE:
+            tasks = user.get_day_tasks(dt.date())
+            if not tasks:
+                bot.edit_message_text('Задач на выбранную дату нет.', user.user_id, call.message.message_id)
+            markup = keyboard.create_tasks_list(tasks)
+            bot.edit_message_text('Выберите задачу для удаления:',
+                                  user.user_id,
+                                  call.message.message_id,
+                                  reply_markup=markup)
+            user.state = states.DELETE_TASK_SUCCESS_STATE
 
 
 sender = NotifySender(bot, data)

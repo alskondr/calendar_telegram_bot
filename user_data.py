@@ -95,15 +95,13 @@ class UserData:
         }
         self.service.events().insert(calendarId=calendar_id, body=event).execute()
 
-    #
-    # def remove_task(self, task_name):
-    #     task = self.get_task(task_name)
-    #     if task:
-    #         sender.remove_notify(task.notify_id)
-    #         self.tasks.remove(task)
-    #         return True
-    #     else:
-    #         return False
+    def remove_task(self, task_id):
+        for calendar in self.get_calendars():
+            try:
+                self.service.events().get(calendarId=calendar['id'], eventId=task_id).execute()
+            except HttpError:
+                continue
+            self.service.events().delete(calendarId=calendar['id'], eventId=task_id).execute()
 
     def get_calendars(self):
         calendars = self.service.calendarList().list().execute()
