@@ -20,7 +20,7 @@ except KeyError:
     print('Не указан токен телеграм бота в конфигурационном файле')
     exit(-1)
 
-# Телеграм-бот
+
 bot = telebot.TeleBot(telegram_token)
 
 
@@ -121,16 +121,6 @@ def delete_handler(message):
     user.state = states.DELETE_TASK_STATE
 
 
-# def delete_task_handler(message):
-#     user_id = message.from_user.id
-#     user = get_user_data(user_id)
-#     if user.remove_task(message.text.lower()):
-#         bot.reply_to(message, 'Задача успешно удалена.')
-#         user.state = MAIN_STATE
-#     else:
-#         bot.reply_to(message, 'Эта задача отсутствует в списке. Введите другое название.')
-
-
 @bot.message_handler(commands=['tasks'])
 def tasks_handler(message):
     user = get_user_data(message.from_user.id)
@@ -164,8 +154,6 @@ def dispatcher(message):
         authorization_handler(message)
     elif state == states.ENTER_ADDED_TASK_NAME_STATE:
         enter_added_task_name_handler(message)
-    # elif state == DELETE_TASK_STATE:
-    #     delete_task_handler(message)
     elif state == states.RANDOM_TASK_STATE:
         random_task_handler(message)
     else:

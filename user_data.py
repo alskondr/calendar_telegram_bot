@@ -3,6 +3,7 @@ import datetime
 from dateutil.tz import gettz, tzlocal
 import os
 from pathlib import Path
+from threading import Lock
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -37,6 +38,7 @@ class UserData:
         self.user_id = user_id
         self.state = states.MAIN_STATE
         self.service = None
+        self._lock = Lock()
         self.current_task_name = ''
         self._calendar_id = ''
 
@@ -65,9 +67,11 @@ class UserData:
         return True
 
     def _get_calendar_id(self):
+        self._lock.acquire()
         try:
             self.service.calendars().get(calendarId=self._calendar_id).execute()
         except HttpError:
+            self._lock.release()
             self._calendar_id = ''
             for calendar in self.get_calendars():
                 if calendar['summary'] == 'kas_calendar_bot':
@@ -78,8 +82,12 @@ class UserData:
                     'summary': 'kas_calendar_bot',
                     'timeZone': 'Europe/Moscow'
                 }
+                self._lock.acquire()
                 created_calendar = self.service.calendars().insert(body=calendar_dict).execute()
+                self._lock.release()
                 self._calendar_id = created_calendar['id']
+        else:
+            self._lock.release()
         return self._calendar_id
 
     def add_task(self, task_name, dt):
@@ -93,18 +101,27 @@ class UserData:
                 'dateTime': (dt.replace(tzinfo=tzlocal()) + datetime.timedelta(hours=1)).isoformat()
             }
         }
+        self._lock.acquire()
         self.service.events().insert(calendarId=calendar_id, body=event).execute()
+        self._lock.release()
 
     def remove_task(self, task_id):
         for calendar in self.get_calendars():
+            self._lock.acquire()
             try:
                 self.service.events().get(calendarId=calendar['id'], eventId=task_id).execute()
             except HttpError:
                 continue
+            finally:
+                self._lock.release()
+            self._lock.acquire()
             self.service.events().delete(calendarId=calendar['id'], eventId=task_id).execute()
+            self._lock.release()
 
     def get_calendars(self):
+        self._lock.acquire()
         calendars = self.service.calendarList().list().execute()
+        self._lock.release()
         return calendars.get('items', [])
 
     def get_tasks(self, min_date_time, max_date_time):
@@ -113,11 +130,13 @@ class UserData:
             tz = gettz(calendar.get('timeZone', 'UTC'))
             time_min = min_date_time.replace(tzinfo=tz).isoformat()
             time_max = max_date_time.replace(tzinfo=tz).isoformat()
+            self._lock.acquire()
             tasks = self.service.events().list(calendarId=calendar['id'],
                                                timeMin=time_min,
                                                timeMax=time_max,
                                                singleEvents=True,
                                                orderBy='startTime').execute()
+            self._lock.release()
             day_tasks.extend(tasks.get('items', []))
         day_tasks.sort(key=lambda task: taskutils.get_task_start_time(task))
         return day_tasks
@@ -133,10 +152,12 @@ class UserData:
         for calendar in self.get_calendars():
             tz = gettz(calendar.get('timeZone', 'UTC'))
             now_str = now.replace(tzinfo=tz).isoformat()
+            self._lock.acquire()
             tasks = self.service.events().list(calendarId=calendar['id'],
                                                timeMin=now_str,
                                                maxResults=5,
                                                singleEvents=True,
                                                orderBy='startTime').execute()
+            self._lock.release()
             future_tasks.extend(tasks.get('items', []))
         return future_tasks
