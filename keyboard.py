@@ -19,12 +19,16 @@ def keyboard_handler(bot, call):
         return datetime.datetime.strptime(calendar_data[1], DT_FORMAT)
     elif calendar_data[0] == 'calendar':
         dt = datetime.datetime.strptime(calendar_data[1], DT_FORMAT)
-        markup = create_calendar(dt)
+        markup = create_calendar(dt, False)
         bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
     elif calendar_data[0] == 'calendar_day':
         dt = datetime.datetime.strptime(calendar_data[1], DT_FORMAT)
-        markup = create_date_time_widget(dt)
-        bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
+        if calendar_data[2]:
+            bot.edit_message_reply_markup(chat_id, message_id, reply_markup=None)
+            return dt
+        else:
+            markup = create_date_time_widget(dt)
+            bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
     elif calendar_data[0] == 'calendar_month':
         option = calendar_data[1]
         dt = datetime.datetime.strptime(calendar_data[2], DT_FORMAT)
@@ -32,8 +36,28 @@ def keyboard_handler(bot, call):
             dt -= relativedelta(months=1)
         elif option == 'next':
             dt += relativedelta(months=1)
-        markup = create_calendar(dt)
+        markup = create_calendar(dt, calendar_data[3])
         bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
+    elif calendar_data[0] == 'today':
+        dt = datetime.datetime.strptime(calendar_data[1], DT_FORMAT)
+        now = datetime.date.today()
+        dt = dt.replace(year=now.year, month=now.month, day=now.day)
+        if calendar_data[2]:
+            bot.edit_message_reply_markup(chat_id, message_id, reply_markup=None)
+            return dt
+        else:
+            markup = create_date_time_widget(dt)
+            bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
+    elif calendar_data[0] == 'tomorrow':
+        dt = datetime.datetime.strptime(calendar_data[1], DT_FORMAT)
+        now = datetime.date.today() + datetime.timedelta(days=1)
+        dt = dt.replace(year=now.year, month=now.month, day=now.day)
+        if calendar_data[2]:
+            bot.edit_message_reply_markup(chat_id, message_id, reply_markup=None)
+            return dt
+        else:
+            markup = create_date_time_widget(dt)
+            bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
     elif calendar_data[0] == 'edit':
         state = calendar_data[1]
         option = calendar_data[2]
@@ -72,7 +96,7 @@ def create_callback_data(*args):
     return ':'.join(str(arg) for arg in args)
 
 
-def create_calendar(dt):
+def create_calendar(dt, only_calendar=True):
     empty_callback_data = create_callback_data('empty')
     markup = {'inline_keyboard': []}
 
@@ -96,12 +120,28 @@ def create_calendar(dt):
             else:
                 dt = dt.replace(day=day)
                 row.append({'text': str(day), 'callback_data': create_callback_data('calendar_day',
-                                                                                    dt.strftime(DT_FORMAT))})
+                                                                                    dt.strftime(DT_FORMAT),
+                                                                                    only_calendar)})
         markup['inline_keyboard'].append(row)
 
     # Кнопки переключения
-    row = [{'text': '<', 'callback_data': create_callback_data('calendar_month', 'prev', dt.strftime(DT_FORMAT))},
-           {'text': '>', 'callback_data': create_callback_data('calendar_month', 'next', dt.strftime(DT_FORMAT))}]
+    row = [{'text': '<', 'callback_data': create_callback_data('calendar_month',
+                                                               'prev',
+                                                               dt.strftime(DT_FORMAT),
+                                                               only_calendar)},
+           {'text': '>', 'callback_data': create_callback_data('calendar_month',
+                                                               'next',
+                                                               dt.strftime(DT_FORMAT),
+                                                               only_calendar)}]
+    markup['inline_keyboard'].append(row)
+
+    # Сегодня, завтра
+    row = [{'text': 'Сегодня', 'callback_data': create_callback_data('today',
+                                                                     dt.strftime(DT_FORMAT),
+                                                                     only_calendar)},
+           {'text': 'Завтра', 'callback_data': create_callback_data('tomorrow',
+                                                                    dt.strftime(DT_FORMAT),
+                                                                    only_calendar)}]
     markup['inline_keyboard'].append(row)
 
     return json.dumps(markup)
