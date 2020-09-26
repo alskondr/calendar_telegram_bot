@@ -1,8 +1,6 @@
-import pickle
 import datetime
 from dateutil.tz import gettz, tzlocal
 import os
-from pathlib import Path
 from threading import Lock
 import json
 
@@ -11,14 +9,17 @@ from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from oauthlib.oauth2.rfc6749.errors import InvalidGrantError
+import google.oauth2.credentials
+
+import redis
 
 import states
 import taskutils
 
 
-# Путь к директории с параметрами авторизации пользователей
-DATA_PATH = os.path.join(Path.home(), '.local', 'share', 'calendar_telegram_bot')
-os.makedirs(DATA_PATH, exist_ok=True)
+# Redis
+REDIS_URL = os.environ['REDIS_URL']
+redis_db = redis.from_url(REDIS_URL)
 
 
 # Служба авторизации в google
@@ -40,17 +41,12 @@ class UserData:
         self.current_task_name = ''
         self._calendar_id = ''
 
-        credentials_path = self.get_credentials_path()
-        if os.path.exists(credentials_path):
-            with open(credentials_path, 'rb') as token:
-                credentials = pickle.load(token)
-                if not credentials.valid and credentials.expired and credentials.refresh_token:
-                    credentials.refresh(Request())
-                if credentials.valid:
-                    self.service = build('calendar', 'v3', credentials=credentials)
-
-    def get_credentials_path(self):
-        return os.path.join(DATA_PATH, '.'.join([str(self.user_id), 'token', 'pickle']))
+        token = redis_db.get(f'{user_id}_token')
+        if token:
+            credentials = google.oauth2.credentials.Credentials.from_authorized_user_info(json.loads(token))
+            credentials.refresh(Request())
+            if credentials.valid:
+                self.service = build('calendar', 'v3', credentials=credentials)
 
     def init_service(self, authorization_code):
         try:
@@ -60,8 +56,7 @@ class UserData:
 
         credentials = flow.credentials
         self.service = build('calendar', 'v3', credentials=credentials)
-        with open(self.get_credentials_path(), 'wb') as token:
-            pickle.dump(credentials, token)
+        redis_db.set(f'{self.user_id}_token', credentials.to_json())
         return True
 
     def _get_calendar_id(self):
