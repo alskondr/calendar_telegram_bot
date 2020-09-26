@@ -1,7 +1,6 @@
-from configparser import ConfigParser
 import random
 import datetime
-import os.path
+import os
 
 import telebot
 
@@ -9,19 +8,10 @@ import keyboard
 import taskutils
 import states
 from notify_sender import NotifySender
-from user_data import UserData, AUTHORIZATION_URL, CONFIG_PATH
+from user_data import UserData, AUTHORIZATION_URL
 
-
-config = ConfigParser()
-config.read(os.path.join(CONFIG_PATH, 'settings.ini'))
-try:
-    telegram_token = config['telegram']['token']
-except KeyError:
-    print('Не указан токен телеграм бота в конфигурационном файле')
-    exit(-1)
-
-
-bot = telebot.TeleBot(telegram_token)
+TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 
 data = {}
