@@ -4,6 +4,7 @@ from dateutil.tz import gettz, tzlocal
 import os
 from pathlib import Path
 from threading import Lock
+import json
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -15,11 +16,6 @@ import states
 import taskutils
 
 
-# Путь к директории с конфигурационными файлами
-CONFIG_PATH = os.path.join(Path.home(), '.config', 'calendar_telegram_bot')
-os.makedirs(CONFIG_PATH, exist_ok=True)
-
-
 # Путь к директории с параметрами авторизации пользователей
 DATA_PATH = os.path.join(Path.home(), '.local', 'share', 'calendar_telegram_bot')
 os.makedirs(DATA_PATH, exist_ok=True)
@@ -27,9 +23,11 @@ os.makedirs(DATA_PATH, exist_ok=True)
 
 # Служба авторизации в google
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-flow = Flow.from_client_secrets_file(os.path.join(CONFIG_PATH, 'client_id.json'),
-                                     SCOPES,
-                                     redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+GOOGLE_TOKEN = os.environ['GOOGLE_TOKEN']
+GOOGLE_CLIENT_CONFIG = json.loads(GOOGLE_TOKEN)
+flow = Flow.from_client_config(GOOGLE_CLIENT_CONFIG,
+                               SCOPES,
+                               redirect_uri='urn:ietf:wg:oauth:2.0:oob')
 AUTHORIZATION_URL, _ = flow.authorization_url(prompt='consent')
 
 
