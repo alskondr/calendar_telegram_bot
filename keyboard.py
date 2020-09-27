@@ -187,9 +187,11 @@ def create_date_time_widget(dt):
     return json.dumps(markup)
 
 
-def create_tasks_list(tasks):
+def create_tasks_list(tasks, tz_name):
     markup = {'inline_keyboard': []}
     for task in tasks:
-        row = [{'text': taskutils.task_to_string(task), 'callback_data': create_callback_data('delete', task['id'])}]
+        row = [
+            {'text': taskutils.task_to_string(task, tz_name), 'callback_data': create_callback_data('delete', task['id'])}
+        ]
         markup['inline_keyboard'].append(row)
     return json.dumps(markup)
