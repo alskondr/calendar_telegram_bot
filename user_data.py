@@ -41,12 +41,27 @@ class UserData:
         self.current_task_name = ''
         self._calendar_id = ''
 
-        token = redis_db.get(f'{user_id}_token')
-        if token:
-            credentials = google.oauth2.credentials.Credentials.from_authorized_user_info(json.loads(token))
+        redis_data = redis_db.get(f'{user_id}_data')
+        if redis_data:
+            d = json.loads(redis_data)
+            self.state = int(d['state'])
+            self.current_task_name = d['task']
+            self._calendar_id = d['calendar']
+
+        redis_token = redis_db.get(f'{user_id}_token')
+        if redis_token:
+            credentials = google.oauth2.credentials.Credentials.from_authorized_user_info(json.loads(redis_token))
             credentials.refresh(Request())
             if credentials.valid:
                 self.service = build('calendar', 'v3', credentials=credentials)
+
+    def set_state(self, state):
+        self.state = state
+        self.dumps_to_redis()
+
+    def set_current_task_name(self, task_name):
+        self.current_task_name = task_name
+        self.dumps_to_redis()
 
     def init_service(self, authorization_code):
         try:
@@ -81,6 +96,7 @@ class UserData:
                 self._calendar_id = created_calendar['id']
         else:
             self._lock.release()
+        self.dumps_to_redis()
         return self._calendar_id
 
     def add_task(self, task_name, dt):
@@ -154,3 +170,11 @@ class UserData:
             self._lock.release()
             future_tasks.extend(tasks.get('items', []))
         return future_tasks
+
+    def dumps_to_redis(self):
+        d = {
+            'state': self.state,
+            'task': self.current_task_name,
+            'calendar': self._calendar_id
+        }
+        redis_db.set(f'{self.user_id}_data', json.dumps(d))
