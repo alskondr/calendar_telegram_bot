@@ -168,7 +168,7 @@ class UserData:
                                                orderBy='startTime').execute()
             self._lock.release()
             day_tasks.extend(tasks.get('items', []))
-        day_tasks.sort(key=lambda task: taskutils.get_task_start_time(task))
+        day_tasks.sort(key=lambda task: taskutils.get_task_start_time_utc(task))
         return day_tasks
 
     def get_day_tasks(self, date):
